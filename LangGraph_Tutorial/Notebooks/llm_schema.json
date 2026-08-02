@@ -1,0 +1,4 @@
+{
+    "category": "sql_query",
+    "query": "SELECT name, age FROM users WHERE age >= 30;\n"
+}
