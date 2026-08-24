@@ -38,9 +38,12 @@ logger = logging.getLogger("spark-agent-backend")
 
 checkpointer = InMemorySaver()
 
+import contextvars
+
+mcp_session_var = contextvars.ContextVar("mcp_session")
+
 # Global placeholders
 agent = None
-mcp_session = None
 
 def json_schema_to_pydantic_model(model_name: str, schema: Dict[str, Any]) -> Type[BaseModel]:
     """Dynamically converts a JSON Schema to a Pydantic BaseModel."""
@@ -93,51 +96,53 @@ def json_schema_to_pydantic_model(model_name: str, schema: Dict[str, Any]) -> Ty
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Manages the life-cycle of the MCP SSE connection and sets up the LangChain Agent."""
-    global agent, mcp_session
+    """Dynamically compiles the LangChain agent graph on startup using a temporary MCP connection."""
+    global agent
     mcp_url = os.getenv("SPARK_MCP_URL", "http://localhost:8030/sse")
-    logger.info(f"Connecting to SparkLens MCP SSE server at {mcp_url}...")
+    logger.info(f"Connecting to SparkLens MCP SSE server at {mcp_url} for compilation...")
     
-    async with sse_client(mcp_url) as (read_stream, write_stream):
-        async with ClientSession(read_stream, write_stream) as session:
-            await session.initialize()
-            mcp_session = session
-            logger.info("Connected to MCP server. Fetching available tools...")
-            
-            tools_response = await session.list_tools()
-            langchain_tools = []
-            
-            def make_call_tool(tool_name):
-                async def call_tool(**kwargs):
-                    # Filter out None values to let the MCP server apply defaults
-                    cleaned_args = {k: v for k, v in kwargs.items() if v is not None}
-                    logger.info(f"Forwarding call to MCP: {tool_name} with args {cleaned_args}")
-                    result = await session.call_tool(tool_name, arguments=cleaned_args)
-                    return result.content
-                return call_tool
-
-            for tool in tools_response.tools:
-                # Construct unique input class name
-                model_name = "".join(x.capitalize() for x in tool.name.split("_")) + "Input"
-                args_schema = json_schema_to_pydantic_model(model_name, tool.inputSchema)
+    try:
+        async with sse_client(mcp_url) as (read_stream, write_stream):
+            async with ClientSession(read_stream, write_stream) as session:
+                await session.initialize()
+                logger.info("Connected to MCP server. Fetching available tools for agent compilation...")
                 
-                lc_tool = StructuredTool.from_function(
-                    coroutine=make_call_tool(tool.name),
-                    name=tool.name,
-                    description=tool.description,
-                    args_schema=args_schema
-                )
-                langchain_tools.append(lc_tool)
-                logger.info(f"Dynamically loaded MCP tool as LangChain tool: {tool.name}")
-            
-            DEFAULT_MODEL = os.getenv("AGENT_MODEL", "google_genai:gemini-3.1-flash-lite")
-            logger.info(f"Creating LangChain agent with model: {DEFAULT_MODEL}...")
-            
-            agent = create_agent(
-                model=DEFAULT_MODEL,
-                tools=langchain_tools,
-                checkpointer=checkpointer,
-                system_prompt="""You are a senior Apache Spark performance tuning and diagnostic AI engineer.
+                tools_response = await session.list_tools()
+                langchain_tools = []
+                
+                def make_call_tool(tool_name):
+                    async def call_tool(**kwargs):
+                        # Filter out None values to let the MCP server apply defaults
+                        cleaned_args = {k: v for k, v in kwargs.items() if v is not None}
+                        # Get active request-scoped session from ContextVar
+                        session = mcp_session_var.get()
+                        logger.info(f"Forwarding call to MCP: {tool_name} with args {cleaned_args}")
+                        result = await session.call_tool(tool_name, arguments=cleaned_args)
+                        return result.content
+                    return call_tool
+
+                for tool in tools_response.tools:
+                    # Construct unique input class name
+                    model_name = "".join(x.capitalize() for x in tool.name.split("_")) + "Input"
+                    args_schema = json_schema_to_pydantic_model(model_name, tool.inputSchema)
+                    
+                    lc_tool = StructuredTool.from_function(
+                        coroutine=make_call_tool(tool.name),
+                        name=tool.name,
+                        description=tool.description,
+                        args_schema=args_schema
+                    )
+                    langchain_tools.append(lc_tool)
+                    logger.info(f"Compiled LangChain tool wrapper: {tool.name}")
+                
+                DEFAULT_MODEL = os.getenv("AGENT_MODEL", "google_genai:gemini-3.1-flash-lite")
+                logger.info(f"Creating LangChain agent with model: {DEFAULT_MODEL}...")
+                
+                agent = create_agent(
+                    model=DEFAULT_MODEL,
+                    tools=langchain_tools,
+                    checkpointer=checkpointer,
+                    system_prompt="""You are a senior Apache Spark performance tuning and diagnostic AI engineer.
 You are equipped with the SparkLens diagnostic toolkit. Your objective is to help developers analyze execution logs, identify performance issues, and troubleshoot Spark jobs.
 
 Guidelines:
@@ -148,11 +153,14 @@ Guidelines:
 5. Provide helpful recommendations for Spark config optimization (e.g. parallelism, memory, partition sizes) if data skew or tasks overload is detected.
 6. Present your analysis, logs, and findings in clean Markdown tables and use bolding/bullet points. Keep your responses structured and scannable.
 """
-            )
-            logger.info("LangChain Spark Agent successfully compiled and ready.")
-            yield
-            
-    logger.info("Service shutting down. Closed connection to MCP server.")
+                )
+                logger.info("LangChain Spark Agent successfully compiled and ready.")
+    except Exception as e:
+        logger.error(f"Failed to fetch tools and compile agent on startup: {e}", exc_info=True)
+        raise RuntimeError("Agent compilation failed on startup") from e
+        
+    yield
+    logger.info("Service shutting down.")
 
 app = FastAPI(
     title="SparkLens AI Agent API & UI",
@@ -218,44 +226,57 @@ async def chat(request: ChatRequest):
     config = {"configurable": {"thread_id": thread_id}}
 
     async def event_generator():
+        mcp_url = os.getenv("SPARK_MCP_URL", "http://localhost:8030/sse")
+        logger.info(f"Establishing dynamic request-local MCP session to {mcp_url}...")
+        
         try:
             # Yield setup event first so frontend gets the thread ID
             yield f"data: {json.dumps({'type': 'setup', 'thread_id': thread_id})}\n\n"
             
-            async for event in agent.astream_events(
-                {"messages": [{"role": "user", "content": request.message.strip()}]},
-                config=config,
-                version="v2"
-            ):
-                kind = event["event"]
-                name = event["name"]
-                
-                if kind == "on_chat_model_stream":
-                    chunk = event["data"]["chunk"]
-                    if hasattr(chunk, "content") and chunk.content:
-                        content_val = chunk.content
-                        if isinstance(content_val, list):
-                            for part in content_val:
-                                if isinstance(part, dict) and "text" in part:
-                                    yield f"data: {json.dumps({'type': 'content', 'delta': part['text']})}\n\n"
-                                elif hasattr(part, "text"):
-                                    yield f"data: {json.dumps({'type': 'content', 'delta': part.text})}\n\n"
-                                elif isinstance(part, str):
-                                    yield f"data: {json.dumps({'type': 'content', 'delta': part})}\n\n"
-                        elif isinstance(content_val, str):
-                            yield f"data: {json.dumps({'type': 'content', 'delta': content_val})}\n\n"
-                
-                elif kind == "on_tool_start":
-                    inputs = event["data"].get("input", {})
-                    yield f"data: {json.dumps({'type': 'tool_start', 'name': name, 'arguments': inputs})}\n\n"
-                
-                elif kind == "on_tool_end":
-                    yield f"data: {json.dumps({'type': 'tool_end', 'name': name})}\n\n"
+            async with sse_client(mcp_url) as (read_stream, write_stream):
+                async with ClientSession(read_stream, write_stream) as session:
+                    await session.initialize()
+                    logger.info("Request-local MCP session initialized.")
                     
-            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                    # Store session in ContextVar
+                    token = mcp_session_var.set(session)
+                    try:
+                        async for event in agent.astream_events(
+                            {"messages": [{"role": "user", "content": request.message.strip()}]},
+                            config=config,
+                            version="v2"
+                        ):
+                            kind = event["event"]
+                            name = event["name"]
+                            
+                            if kind == "on_chat_model_stream":
+                                chunk = event["data"]["chunk"]
+                                if hasattr(chunk, "content") and chunk.content:
+                                    content_val = chunk.content
+                                    if isinstance(content_val, list):
+                                        for part in content_val:
+                                            if isinstance(part, dict) and "text" in part:
+                                                yield f"data: {json.dumps({'type': 'content', 'delta': part['text']})}\n\n"
+                                            elif hasattr(part, "text"):
+                                                yield f"data: {json.dumps({'type': 'content', 'delta': part.text})}\n\n"
+                                            elif isinstance(part, str):
+                                                yield f"data: {json.dumps({'type': 'content', 'delta': part})}\n\n"
+                                    elif isinstance(content_val, str):
+                                        yield f"data: {json.dumps({'type': 'content', 'delta': content_val})}\n\n"
+                            
+                            elif kind == "on_tool_start":
+                                inputs = event["data"].get("input", {})
+                                yield f"data: {json.dumps({'type': 'tool_start', 'name': name, 'arguments': inputs})}\n\n"
+                            
+                            elif kind == "on_tool_end":
+                                yield f"data: {json.dumps({'type': 'tool_end', 'name': name})}\n\n"
+                                
+                        yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                    finally:
+                        mcp_session_var.reset(token)
 
         except Exception as e:
-            logger.error(f"Error during agent streaming: {e}", exc_info=True)
+            logger.error(f"Error during request-local agent streaming: {e}", exc_info=True)
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
