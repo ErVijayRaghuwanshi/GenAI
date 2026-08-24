@@ -130,7 +130,7 @@ async def lifespan(app: FastAPI):
                 langchain_tools.append(lc_tool)
                 logger.info(f"Dynamically loaded MCP tool as LangChain tool: {tool.name}")
             
-            DEFAULT_MODEL = os.getenv("AGENT_MODEL", "google_genai:gemini-3.6-flash")
+            DEFAULT_MODEL = os.getenv("AGENT_MODEL", "google_genai:gemini-3.1-flash-lite")
             logger.info(f"Creating LangChain agent with model: {DEFAULT_MODEL}...")
             
             agent = create_agent(
