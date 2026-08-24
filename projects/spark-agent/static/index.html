@@ -249,7 +249,74 @@
             container.appendChild(wrapper);
             
             // Auto scroll to bottom
+            container.scrollT        function appendToolCall(toolName, args) {
+            const container = document.getElementById('chat-messages');
+            const wrapper = document.createElement('div');
+            wrapper.className = "flex gap-4 max-w-3xl items-start my-2 animate-fade-in";
+            
+            const avatar = document.createElement('div');
+            avatar.className = "w-8 h-8 rounded-lg bg-slate-900 border border-slate-700 flex items-center justify-center text-slate-400 font-bold text-xs flex-shrink-0";
+            avatar.innerText = "🔧";
+            
+            const msgBody = document.createElement('div');
+            msgBody.className = "flex-1";
+            
+            const pill = document.createElement('div');
+            pill.className = "inline-flex items-center gap-2 bg-indigo-950/40 border border-indigo-900/50 rounded-xl px-4 py-2.5 text-xs text-indigo-300 font-mono shadow-sm";
+            
+            const spinner = document.createElement('span');
+            spinner.className = "w-2 h-2 rounded-full bg-indigo-400 animate-ping inline-block flex-shrink-0";
+            
+            const statusText = document.createElement('span');
+            // Clean up arguments display
+            const argsStr = args && Object.keys(args).length > 0 ? JSON.stringify(args) : "";
+            statusText.innerHTML = `Calling <strong>${toolName}</strong> ${argsStr}`;
+            
+            pill.appendChild(spinner);
+            pill.appendChild(statusText);
+            msgBody.appendChild(pill);
+            wrapper.appendChild(avatar);
+            wrapper.appendChild(msgBody);
+            
+            container.appendChild(wrapper);
             container.scrollTop = container.scrollHeight;
+            
+            return pill;
+        }
+
+        function finishToolCall(pillElement, toolName) {
+            pillElement.className = "inline-flex items-center gap-2 bg-emerald-950/20 border border-emerald-900/50 rounded-xl px-4 py-2.5 text-xs text-emerald-400 font-mono shadow-sm";
+            pillElement.innerHTML = `<span>✅</span> <span>Completed call to <strong>${toolName}</strong></span>`;
+        }
+
+        function createAssistantBubble() {
+            const container = document.getElementById('chat-messages');
+            const wrapper = document.createElement('div');
+            wrapper.className = "flex gap-4 max-w-3xl";
+            
+            const avatar = document.createElement('div');
+            avatar.className = "w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-bold flex-shrink-0 text-sm shadow-md shadow-indigo-600/10";
+            avatar.innerText = "🤖";
+            
+            const msgBody = document.createElement('div');
+            msgBody.className = "flex-1";
+            
+            const label = document.createElement('p');
+            label.className = "font-semibold text-xs text-slate-400 mb-1";
+            label.innerText = "SparkLens Agent";
+            
+            const textContainer = document.createElement('div');
+            textContainer.className = "markdown-content text-sm rounded-xl px-4 py-3 border bg-slate-800 border-slate-700 text-slate-200 shadow-sm";
+            
+            msgBody.appendChild(label);
+            msgBody.appendChild(textContainer);
+            wrapper.appendChild(avatar);
+            wrapper.appendChild(msgBody);
+            
+            container.appendChild(wrapper);
+            container.scrollTop = container.scrollHeight;
+            
+            return { wrapper, container: textContainer };
         }
 
         async function handleSubmit(event) {
@@ -267,9 +334,12 @@
             const loader = document.getElementById('chat-loader');
             loader.classList.remove('hidden');
             
-            // Scroll to loader
             const container = document.getElementById('chat-messages');
             container.scrollTop = container.scrollHeight;
+
+            let currentAssistantTextContainer = null;
+            let currentAssistantText = "";
+            let activeToolBubble = null;
 
             try {
                 const res = await fetch('/api/chat', {
@@ -286,10 +356,75 @@
                     throw new Error(errorMsg);
                 }
 
-                const data = await res.json();
+                const reader = res.body.getReader();
+                const decoder = new TextDecoder("utf-8");
+                let buffer = "";
+
+                while (true) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+                    
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split("\n");
+                    buffer = lines.pop(); // save remaining fragment
+                    
+                    for (const line of lines) {
+                        const cleaned = line.trim();
+                        if (cleaned.startsWith("data: ")) {
+                            const dataStr = cleaned.slice(6).trim();
+                            if (!dataStr) continue;
+                            
+                            try {
+                                const data = JSON.parse(dataStr);
+                                
+                                if (data.type === 'setup') {
+                                    currentThreadId = data.thread_id;
+                                    document.getElementById('session-id').innerText = currentThreadId;
+                                }
+                                
+                                else if (data.type === 'tool_start') {
+                                    loader.classList.add('hidden');
+                                    // Reset assistant text block so a new one is created after tool execution finishes
+                                    currentAssistantTextContainer = null;
+                                    currentAssistantText = "";
+                                    activeToolBubble = appendToolCall(data.name, data.arguments);
+                                }
+                                
+                                else if (data.type === 'tool_end') {
+                                    if (activeToolBubble) {
+                                        finishToolCall(activeToolBubble, data.name);
+                                        activeToolBubble = null;
+                                    }
+                                }
+                                
+                                else if (data.type === 'content') {
+                                    loader.classList.add('hidden');
+                                    
+                                    if (!currentAssistantTextContainer) {
+                                        const bubble = createAssistantBubble();
+                                        currentAssistantTextContainer = bubble.container;
+                                        currentAssistantText = "";
+                                    }
+                                    
+                                    currentAssistantText += data.delta;
+                                    currentAssistantTextContainer.innerHTML = marked.parse(currentAssistantText);
+                                    container.scrollTop = container.scrollHeight;
+                                }
+                                
+                                else if (data.type === 'error') {
+                                    loader.classList.add('hidden');
+                                    appendMessage('assistant', `⚠️ **Error during agent invocation**: ${data.message}`);
+                                }
+                            } catch(jsonErr) {
+                                console.error("Error parsing streaming JSON event chunk", jsonErr, line);
+                            }
+                        }
+                    }
+                }
+                
+                // Hide loader in case it was left open
                 loader.classList.add('hidden');
                 
-                appendMessage('assistant', data.response);
             } catch (err) {
                 loader.classList.add('hidden');
                 appendMessage('assistant', `⚠️ **Error connecting to agent**: ${err.message || err}`);

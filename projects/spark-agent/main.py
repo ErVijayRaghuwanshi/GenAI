@@ -13,8 +13,9 @@ dotenv.load_dotenv(dotenv_path=str(Path(__file__).resolve().parents[2] / ".env")
 if "GEMINI_API_KEY" in os.environ and "GOOGLE_API_KEY" not in os.environ:
     os.environ["GOOGLE_API_KEY"] = os.environ["GEMINI_API_KEY"]
 
+import json
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.responses import HTMLResponse, FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, create_model
 
@@ -203,9 +204,9 @@ def extract_text_from_content(content: Any) -> str:
             return str(content["text"])
     return str(content)
 
-@app.post("/api/chat", response_model=ChatResponse)
+@app.post("/api/chat")
 async def chat(request: ChatRequest):
-    """Sends a message to the agent and gets a response."""
+    """Sends a message to the agent and gets a streaming response over SSE."""
     global agent
     if not agent:
         raise HTTPException(status_code=503, detail="Agent is not yet initialized or SparkLens MCP server is offline.")
@@ -216,30 +217,48 @@ async def chat(request: ChatRequest):
     thread_id = request.thread_id.strip() if request.thread_id else str(uuid7())
     config = {"configurable": {"thread_id": thread_id}}
 
-    try:
-        # LangGraph ReAct agent invocation
-        result = await agent.ainvoke(
-            {"messages": [{"role": "user", "content": request.message.strip()}]},
-            config=config,
-        )
+    async def event_generator():
+        try:
+            # Yield setup event first so frontend gets the thread ID
+            yield f"data: {json.dumps({'type': 'setup', 'thread_id': thread_id})}\n\n"
+            
+            async for event in agent.astream_events(
+                {"messages": [{"role": "user", "content": request.message.strip()}]},
+                config=config,
+                version="v2"
+            ):
+                kind = event["event"]
+                name = event["name"]
+                
+                if kind == "on_chat_model_stream":
+                    chunk = event["data"]["chunk"]
+                    if hasattr(chunk, "content") and chunk.content:
+                        content_val = chunk.content
+                        if isinstance(content_val, list):
+                            for part in content_val:
+                                if isinstance(part, dict) and "text" in part:
+                                    yield f"data: {json.dumps({'type': 'content', 'delta': part['text']})}\n\n"
+                                elif hasattr(part, "text"):
+                                    yield f"data: {json.dumps({'type': 'content', 'delta': part.text})}\n\n"
+                                elif isinstance(part, str):
+                                    yield f"data: {json.dumps({'type': 'content', 'delta': part})}\n\n"
+                        elif isinstance(content_val, str):
+                            yield f"data: {json.dumps({'type': 'content', 'delta': content_val})}\n\n"
+                
+                elif kind == "on_tool_start":
+                    inputs = event["data"].get("input", {})
+                    yield f"data: {json.dumps({'type': 'tool_start', 'name': name, 'arguments': inputs})}\n\n"
+                
+                elif kind == "on_tool_end":
+                    yield f"data: {json.dumps({'type': 'tool_end', 'name': name})}\n\n"
+                    
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
 
-        messages = result.get("messages", [])
-        if not messages:
-            response_text = "No response generated."
-        else:
-            last_message = messages[-1]
-            if hasattr(last_message, "content"):
-                response_text = extract_text_from_content(last_message.content)
-            elif isinstance(last_message, dict) and "content" in last_message:
-                response_text = extract_text_from_content(last_message["content"])
-            else:
-                response_text = extract_text_from_content(last_message)
+        except Exception as e:
+            logger.error(f"Error during agent streaming: {e}", exc_info=True)
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
 
-        return ChatResponse(response=response_text, thread_id=thread_id)
-
-    except Exception as e:
-        logger.error(f"Error executing agent query: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Agent Error: {str(e)}")
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 @app.get("/api/history/{thread_id}")
 async def get_thread_history(thread_id: str):
