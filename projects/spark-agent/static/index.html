@@ -249,7 +249,10 @@
             container.appendChild(wrapper);
             
             // Auto scroll to bottom
-            container.scrollT        function appendToolCall(toolName, args) {
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function appendToolCall(toolName, args) {
             const container = document.getElementById('chat-messages');
             const wrapper = document.createElement('div');
             wrapper.className = "flex gap-4 max-w-3xl items-start my-2 animate-fade-in";
