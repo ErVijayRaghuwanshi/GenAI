@@ -5,7 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "langchain>=1.2.0",
+    "langchain[google-genai]>=1.2.0",
     "langchain-community>=0.4.1",
     "load-dotenv>=0.1.0",
     "openai>=2.14.0",
@@ -30,4 +30,8 @@ dependencies = [
     "autogen-ext[ollama]>=0.7.5",
     "pydantic-ai>=1.77.0",
     "langsmith>=0.7.25",
+    "langchain-google-genai>=4.3.2",
+    "deepagents>=0.7.5",
+    "pydantic-ai-slim[google]>=2.22.0",
+    "langchain-mcp-adapters>=0.3.2",
 ]
