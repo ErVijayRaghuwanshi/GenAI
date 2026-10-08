@@ -34,4 +34,9 @@ dependencies = [
     "deepagents>=0.7.5",
     "pydantic-ai-slim[google]>=2.22.0",
     "langchain-mcp-adapters>=0.3.2",
+    "pyarrow>=25.0.1",
+    "matplotlib>=3.11.2",
+    "seaborn>=0.13.2",
+    "psycopg2-binary>=2.9.13",
+    "langchain-postgres>=0.0.19",
 ]

@@ -1,0 +1,22 @@
+Technical Troubleshooting FAQ and Error Reference
+
+Error Code: ERR_AUTH_EXPIRED
+Cause: The provided API key has exceeded its 90-day validity window.
+Resolution: Generate a new API token from the Developer Settings dashboard and update your deployment environment variables.
+
+Error Code: ERR_RATE_EXCEEDED
+Cause: Request throughput exceeded the per-minute quota assigned to your plan tier (300 req/min for Pro, 1200 req/min for Enterprise).
+Resolution: Inspect the Retry-After header returned by the server, pause outgoing requests for the specified duration, and implement exponential backoff.
+
+Error Code: ERR_PAYLOAD_TOO_LARGE
+Cause: The file or document batch submitted to the ingestion endpoint exceeds the single-request limit of 15 MB.
+Resolution: Split document batches into smaller files or upload large documents in chunks under 10 MB each.
+
+Webhook Delivery Failures:
+If an endpoint fails to return a 200 OK within 5 seconds, the webhook delivery worker retries automatically:
+- Attempt 1: Immediate retry after 1 minute
+- Attempt 2: Retry after 5 minutes
+- Attempt 3: Retry after 15 minutes
+- Attempt 4: Retry after 1 hour
+- Attempt 5: Final retry after 6 hours
+If all 5 attempts fail, the webhook endpoint is marked disabled and an alert email is sent to the organization administrator.

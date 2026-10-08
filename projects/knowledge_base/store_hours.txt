@@ -1,0 +1,22 @@
+Store Hours and Operating Schedule
+
+Retail Storefront Operating Hours:
+- Monday through Friday: 9:00 AM to 6:00 PM EST
+- Saturday: 10:00 AM to 4:00 PM EST
+- Sunday: Closed all day
+
+Customer Support Contact Center Hours:
+- Phone & Live Chat Support: Monday through Friday from 8:00 AM to 8:00 PM EST
+- Weekend Phone Support: Saturday from 10:00 AM to 2:00 PM EST
+- Ticket submission via web portal: Available 24 hours a day, 7 days a week
+
+Holiday Schedule:
+The storefront and phone support lines are completely closed on the following official holidays:
+- New Year's Day (January 1)
+- Memorial Day (Last Monday in May)
+- Independence Day (July 4)
+- Labor Day (First Monday in September)
+- Thanksgiving Day (Fourth Thursday in November)
+- Christmas Day (December 25)
+
+On Christmas Eve and New Year's Eve, retail storefront operations close early at 2:00 PM EST.

@@ -1,0 +1,66 @@
+{
+  "currency": "USD",
+  "billing_cycle_discount_annual_percent": 20,
+  "plans": [
+    {
+      "tier": "Basic",
+      "monthly_price": 10.00,
+      "annual_price_per_month": 8.00,
+      "user_seats": 1,
+      "storage_gb": 10,
+      "support_tier": "Community Forums",
+      "api_access": false,
+      "features": [
+        "Single-user workspace",
+        "10 GB cloud document storage",
+        "Standard query speed",
+        "Community forum support"
+      ]
+    },
+    {
+      "tier": "Pro",
+      "monthly_price": 25.00,
+      "annual_price_per_month": 20.00,
+      "user_seats": 5,
+      "storage_gb": 100,
+      "support_tier": "Priority Email (4-hour response SLA)",
+      "api_access": true,
+      "api_rate_limit_per_minute": 300,
+      "features": [
+        "Up to 5 team seats",
+        "100 GB cloud document storage",
+        "Priority retrieval queue",
+        "REST API access up to 300 requests/minute",
+        "Priority email support"
+      ]
+    },
+    {
+      "tier": "Enterprise",
+      "monthly_price": 99.00,
+      "annual_price_per_month": 79.20,
+      "user_seats": "Unlimited",
+      "storage_gb": 2048,
+      "support_tier": "24/7 Dedicated Account Manager & Phone SLA",
+      "api_access": true,
+      "api_rate_limit_per_minute": 1200,
+      "features": [
+        "Unlimited organization seats",
+        "2 TB dedicated enterprise storage",
+        "Custom vector embeddings tuning",
+        "Dedicated enterprise account manager",
+        "24/7 live phone support with 15-minute critical incident SLA",
+        "Custom API rate limit up to 1,200 requests/minute"
+      ]
+    }
+  ],
+  "add_ons": [
+    {
+      "name": "Additional Storage 50GB",
+      "price_monthly": 5.00
+    },
+    {
+      "name": "Dedicated Static IP",
+      "price_monthly": 15.00
+    }
+  ]
+}

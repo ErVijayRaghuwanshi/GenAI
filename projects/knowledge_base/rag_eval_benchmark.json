@@ -1,0 +1,72 @@
+[
+  {
+    "id": "eval-001",
+    "category": "single_fact_lookup",
+    "question": "How many days do approved refunds take to process?",
+    "ground_truth": "Approved refunds take 5 to 7 business days to process and reflect on the original payment method.",
+    "source_file": "refund_policy.md"
+  },
+  {
+    "id": "eval-002",
+    "category": "threshold_rule",
+    "question": "What is the minimum order amount required to qualify for free standard shipping?",
+    "ground_truth": "Free standard shipping requires a subtotal of $50.00 or greater before taxes and after discounts.",
+    "source_file": "shipping_faq.md"
+  },
+  {
+    "id": "eval-003",
+    "category": "schedule_lookup",
+    "question": "What are the storefront operating hours on Saturday?",
+    "ground_truth": "The retail storefront is open on Saturday from 10:00 AM to 4:00 PM EST.",
+    "source_file": "store_hours.txt"
+  },
+  {
+    "id": "eval-004",
+    "category": "pricing_and_features",
+    "question": "How many user seats are included in the Pro tier, and what is its monthly price?",
+    "ground_truth": "The Pro tier includes 5 user seats and costs $25.00 per month (or $20.00/month if billed annually).",
+    "source_file": "product_pricing.json"
+  },
+  {
+    "id": "eval-005",
+    "category": "technical_quota",
+    "question": "What is the API rate limit for a customer subscribed to the Pro plan?",
+    "ground_truth": "The Pro plan has an API rate limit of 300 requests per minute.",
+    "source_file": "api_rate_limits.md"
+  },
+  {
+    "id": "eval-006",
+    "category": "security_policy",
+    "question": "What is the maximum token validity period and recommended rotation frequency?",
+    "ground_truth": "API tokens have a maximum validity of 90 days, with a recommended rotation frequency of every 60 days.",
+    "source_file": "authentication_guide.md"
+  },
+  {
+    "id": "eval-007",
+    "category": "troubleshooting",
+    "question": "What does the ERR_PAYLOAD_TOO_LARGE error mean and how can it be resolved?",
+    "ground_truth": "ERR_PAYLOAD_TOO_LARGE indicates the file or batch exceeds the 15 MB limit. It can be resolved by splitting batches or uploading chunks under 10 MB.",
+    "source_file": "troubleshooting_faq.txt"
+  },
+  {
+    "id": "eval-008",
+    "category": "incident_lookup",
+    "question": "What was the root cause of the incident on 2026-08-15 (INC-2026-0801)?",
+    "ground_truth": "The root cause was a memory leak in the connection pooler during heavy parallel embedding inserts, resolved by hotfix v2.4.1.",
+    "source_file": "system_incidents.json"
+  },
+  {
+    "id": "eval-009",
+    "category": "multi_hop_synthesis",
+    "question": "Can a user on the Basic plan access the REST API to ingest documents?",
+    "ground_truth": "No. The Basic plan does not include programmatic API access (api_access is false).",
+    "source_file": "product_pricing.json, api_rate_limits.md"
+  },
+  {
+    "id": "eval-010",
+    "category": "negative_hallucination_check",
+    "question": "What is the pet adoption fee and veterinary policy for corporate office visits?",
+    "ground_truth": "I don't know. The provided context does not contain any information about pet adoption fees or veterinary policies.",
+    "source_file": "none"
+  }
+]

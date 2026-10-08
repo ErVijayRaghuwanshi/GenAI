@@ -1,0 +1,29 @@
+[
+  {
+    "incident_id": "INC-2026-0801",
+    "date": "2026-08-15",
+    "affected_service": "US-East Vector Store Cluster",
+    "severity": "Major",
+    "downtime_minutes": 18,
+    "root_cause": "Memory leak in connection pooler during heavy parallel embedding inserts.",
+    "resolution": "Applied hotfix v2.4.1 to recycle idle pool connections and capped max connection backlog to 100."
+  },
+  {
+    "incident_id": "INC-2026-0902",
+    "date": "2026-09-02",
+    "affected_service": "Authentication Gateway",
+    "severity": "Minor",
+    "downtime_minutes": 7,
+    "root_cause": "Redis cache replica desynchronization caused spurious token validation failures.",
+    "resolution": "Re-synchronized Redis replica cluster and increased replication timeout threshold from 2s to 5s."
+  },
+  {
+    "incident_id": "INC-2026-0928",
+    "date": "2026-09-28",
+    "affected_service": "Transactional Notification Queue",
+    "severity": "Degraded",
+    "downtime_minutes": 42,
+    "root_cause": "Upstream SMTP service provider throttled outbound order confirmation emails.",
+    "resolution": "Configured dynamic traffic splitting across secondary SMTP backup provider."
+  }
+]
